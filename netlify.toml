@@ -4,3 +4,7 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # These four settings are not secrets (server address, workspace name, questionnaire name, admin login name).
+  # Their values are ordinary words that appear all over the code, so Netlify's secrets scan would fail the build.
+  # Passwords and the AUTH/CRON secrets are still scanned.
+  SECRETS_SCAN_OMIT_KEYS = "SUSO_URL,SUSO_WORKSPACE,SUSO_QUESTIONNAIRE_VARIABLE,ADMIN_USERNAME"
