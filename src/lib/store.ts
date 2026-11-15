@@ -25,13 +25,25 @@ function filePath(kind: StorageKind, name: string) {
   return kind === "tmp-file" ? path.join("/tmp", `gaes-${name}.json`) : path.join(process.cwd(), "data", `${name}.json`);
 }
 
+/** Reject when storage does not answer in time, so a stalled store never hangs a request until the platform kills it. */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+const STORE_TIMEOUT_MS = 8000;
+
 export async function readJson<T>(name: string): Promise<T | null> {
   const kind = storageKind();
+  const t0 = Date.now();
   try {
     if (kind === "netlify-blobs") {
       const { getStore } = await import("@netlify/blobs");
       const store = getStore({ name: "gaes-dashboard", consistency: "strong" });
-      return ((await store.get(`${name}.json`, { type: "json" })) as T | null) ?? null;
+      const v = ((await withTimeout(store.get(`${name}.json`, { type: "json" }), STORE_TIMEOUT_MS, `Netlify Blobs read ${name}`)) as T | null) ?? null;
+      if (Date.now() - t0 > 2000) console.warn(`[store] read ${name} took ${Date.now() - t0} ms`);
+      return v;
     }
     if (kind === "vercel-blob") {
       const { get } = await import("@vercel/blob");
@@ -42,7 +54,7 @@ export async function readJson<T>(name: string): Promise<T | null> {
     const raw = await fs.readFile(filePath(kind, name), "utf8").catch(() => null);
     return raw ? (JSON.parse(raw) as T) : null;
   } catch (e) {
-    console.error(`[store] read ${name} failed`, e);
+    console.error(`[store] read ${name} failed after ${Date.now() - t0} ms (storage: ${kind})`, e);
     return null;
   }
 }
@@ -52,7 +64,7 @@ export async function writeJson(name: string, value: unknown): Promise<void> {
   const body = JSON.stringify(value, null, 2);
   if (kind === "netlify-blobs") {
     const { getStore } = await import("@netlify/blobs");
-    await getStore({ name: "gaes-dashboard", consistency: "strong" }).set(`${name}.json`, body);
+    await withTimeout(getStore({ name: "gaes-dashboard", consistency: "strong" }).set(`${name}.json`, body), STORE_TIMEOUT_MS, `Netlify Blobs write ${name}`);
     return;
   }
   if (kind === "vercel-blob") {

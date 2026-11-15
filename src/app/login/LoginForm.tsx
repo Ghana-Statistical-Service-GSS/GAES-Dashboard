@@ -22,12 +22,23 @@ export default function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || "Sign-in failed");
+      const text = await r.text();
+      let j: { error?: string; detail?: string } = {};
+      try {
+        j = JSON.parse(text);
+      } catch {
+        /* not JSON: a platform error page */
+      }
+      if (!r.ok) {
+        // full details for troubleshooting: open the browser console (F12) and copy this line
+        console.error("[login] sign-in failed", { status: r.status, statusText: r.statusText, requestId: r.headers.get("x-nf-request-id"), body: text.slice(0, 2000) });
+        throw new Error(j.error ? `${j.error}${j.detail ? ` — ${j.detail}` : ""}` : `Sign-in failed (server error ${r.status}). ${text.slice(0, 200)}`);
+      }
       const next = params.get("next");
       router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
       router.refresh();
     } catch (e) {
+      console.error("[login] error", e);
       setErr((e as Error).message);
       setBusy(false);
     }

@@ -125,7 +125,8 @@ export async function authenticate(usernameRaw: string, password: string): Promi
   if (u) {
     if (!u.active || !verifyPassword(password, u.salt, u.hash)) return null;
     u.lastLoginAt = new Date().toISOString();
-    await writeUsers(doc).catch(() => undefined);
+    // do not make the user wait for (or fail on) the last-login stamp
+    writeUsers(doc).catch((e) => console.error("[users] could not save last login", e));
     return toPublic(u);
   }
   const boot = bootstrapAdmin();
