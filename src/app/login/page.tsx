@@ -21,7 +21,7 @@ export default function LoginPage() {
             <div className="logo-ring !h-14 !w-14"><img src="/gss-logo.png" alt="Ghana Statistical Service" /></div>
             <div className="leading-tight">
               <div className="text-sm font-semibold uppercase tracking-[0.18em] text-white/90">Ghana Statistical Service</div>
-              <div className="mt-0.5 text-xs text-white/75">Economic Statistics Directorate</div>
+              <div className="mt-0.5 text-xs text-white/75">Business, Industry and Trade Directorate</div>
             </div>
           </div>
           <div className="my-auto max-w-xl py-10">
