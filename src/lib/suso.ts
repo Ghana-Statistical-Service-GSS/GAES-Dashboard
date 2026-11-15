@@ -114,6 +114,7 @@ export async function downloadJobFile(id: number): Promise<Uint8Array> {
     headers: { Authorization: c.auth },
     cache: "no-store",
     redirect: "follow",
+    signal: AbortSignal.timeout(45_000),
   });
   if (!res.ok) throw new Error(`Download of export ${id} failed: HTTP ${res.status}`);
   return new Uint8Array(await res.arrayBuffer());

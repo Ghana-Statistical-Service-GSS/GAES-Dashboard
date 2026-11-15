@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/server-session";
-import { getDataset } from "@/lib/data/process";
+import { getDataset, lastSteps } from "@/lib/data/process";
 import { viewFor } from "@/lib/data/view";
 
 export const runtime = "nodejs";
@@ -16,6 +16,11 @@ export async function GET(req: Request) {
     return NextResponse.json(viewFor(data, s), { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     console.error("[api/data]", e);
-    return NextResponse.json({ error: (e as Error).message || "Could not load data from Survey Solutions" }, { status: 502 });
+    const err = e as Error;
+    return NextResponse.json({
+      error: err.message || "Could not load data from Survey Solutions",
+      // where the time went and where it failed (no data, no credentials) — admins only
+      ...(s.role === "admin" ? { steps: lastSteps, where: (err.stack || "").split("\n").slice(1, 5).map((l) => l.trim().replace(/\(.*[\\/]/, "(")) } : {}),
+    }, { status: 502 });
   }
 }

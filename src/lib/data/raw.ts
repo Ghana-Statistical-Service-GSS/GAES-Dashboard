@@ -32,17 +32,47 @@ const CACHE_DIR = process.env.VERCEL || process.env.NETLIFY || process.env.AWS_L
   ? "/tmp/gaes-cache"
   : path.join(process.cwd(), "data", "cache");
 
-async function cachedZip(jobId: number): Promise<Uint8Array> {
+/**
+ * Is this a whole zip archive? A download or cache write that was cut short (for example when the
+ * serverless function is stopped at its time limit) leaves a file without the end-of-archive record;
+ * unzipping such a file fails with "Array buffer allocation failed".
+ */
+function isCompleteZip(b: Uint8Array): boolean {
+  if (b.length < 22 || b[0] !== 0x50 || b[1] !== 0x4b) return false;
+  for (let i = b.length - 22, stop = Math.max(0, b.length - 66000); i >= stop; i--) {
+    if (b[i] === 0x50 && b[i + 1] === 0x4b && b[i + 2] === 0x05 && b[i + 3] === 0x06) return true;
+  }
+  return false;
+}
+
+const inFlight = new Map<number, Promise<Uint8Array>>();
+
+/** Export archive from the local cache, or downloaded once (concurrent callers share the same download). */
+function cachedZip(jobId: number): Promise<Uint8Array> {
+  let p = inFlight.get(jobId);
+  if (!p) {
+    p = fetchZip(jobId).finally(() => inFlight.delete(jobId));
+    inFlight.set(jobId, p);
+  }
+  return p;
+}
+
+async function fetchZip(jobId: number): Promise<Uint8Array> {
   const p = path.join(CACHE_DIR, `export-${jobId}.zip`);
-  try {
-    return new Uint8Array(await fs.readFile(p));
-  } catch {
+  const cached = await fs.readFile(p).then((b) => new Uint8Array(b), () => null);
+  if (cached && isCompleteZip(cached)) return cached;
+  if (cached) await fs.unlink(p).catch(() => undefined); // half-written file from an interrupted run
+  {
     const bytes = await downloadJobFile(jobId);
+    if (!isCompleteZip(bytes)) throw new Error(`Survey Solutions sent an incomplete file for export ${jobId} — please try again.`);
     try {
       await fs.mkdir(CACHE_DIR, { recursive: true });
-      await fs.writeFile(p, bytes);
+      // write under a temporary name, then rename: readers never see a partial file
+      const tmp = `${p}.${process.pid}.${Date.now()}.part`;
+      await fs.writeFile(tmp, bytes);
+      await fs.rename(tmp, p);
       // keep the cache small: remove older zips
-      const files = (await fs.readdir(CACHE_DIR)).filter((f) => f.startsWith("export-"));
+      const files = (await fs.readdir(CACHE_DIR)).filter((f) => f.startsWith("export-") && f.endsWith(".zip"));
       if (files.length > 8) {
         const stats = await Promise.all(files.map(async (f) => ({ f, t: (await fs.stat(path.join(CACHE_DIR, f))).mtimeMs })));
         stats.sort((a, b) => a.t - b.t);
@@ -138,8 +168,10 @@ export async function loadRawExport(opts: { force?: boolean; jobs?: ResolvedJobs
     labels: { variables: {}, values: {}, valueSets: {} }, fetchedAt: new Date().toISOString(),
   };
 
-  for (const r of resolved) {
-    const zip = await cachedZip(r.job.JobId);
+  // download every archive at the same time; they are then merged in version order
+  const zips = await Promise.all(resolved.map((r) => cachedZip(r.job.JobId)));
+  for (const [k, r] of resolved.entries()) {
+    const zip = zips[k];
     const version = String(r.q.Version);
     const tag = (rows: Row[]) => rows.map((x) => ({ ...x, qversion: version }));
     if (r.type === "Tabular") {

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { authenticate } from "@/lib/users";
-import { storageKind } from "@/lib/store";
 import { SESSION_COOKIE, SESSION_HOURS, signSession } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -17,27 +16,18 @@ export async function POST(req: Request) {
   const password = String(body.password || "");
   if (!username || !password) return NextResponse.json({ error: "Enter your username and password" }, { status: 400 });
 
-  // Step-by-step log (visible in Netlify → Logs → Functions). Never logs the password.
-  const t0 = Date.now();
-  const log = (step: string, extra: Record<string, unknown> = {}) => console.log(`[login] ${step}`, JSON.stringify({ ms: Date.now() - t0, username: username.trim().toLowerCase(), ...extra }));
-  log("start", {
-    storage: storageKind(),
-    hasAdminUser: !!process.env.ADMIN_USERNAME, hasAdminPassword: !!process.env.ADMIN_PASSWORD, hasAuthSecret: !!process.env.AUTH_SECRET,
-  });
   let user: Awaited<ReturnType<typeof authenticate>>;
   let token: string;
   try {
     user = await authenticate(username, password);
-    log("credentials checked", { found: !!user });
     if (!user) {
       await new Promise((r) => setTimeout(r, 400)); // slow down guessing
       return NextResponse.json({ error: "Incorrect username or password" }, { status: 401 });
     }
     token = await signSession({ username: user.username, name: user.name, role: user.role, regions: user.regions });
-    log("session signed");
   } catch (e) {
     const detail = (e as Error)?.message || String(e);
-    console.error("[login] failed", JSON.stringify({ ms: Date.now() - t0, detail }), e);
+    console.error("[login] failed", e);
     return NextResponse.json({ error: "Sign-in failed on the server", detail, step: "login" }, { status: 500 });
   }
   const res = NextResponse.json({ ok: true, user: { username: user.username, name: user.name, role: user.role } });

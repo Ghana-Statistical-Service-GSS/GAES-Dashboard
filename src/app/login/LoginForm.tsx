@@ -30,15 +30,12 @@ export default function LoginForm() {
         /* not JSON: a platform error page */
       }
       if (!r.ok) {
-        // full details for troubleshooting: open the browser console (F12) and copy this line
-        console.error("[login] sign-in failed", { status: r.status, statusText: r.statusText, requestId: r.headers.get("x-nf-request-id"), body: text.slice(0, 2000) });
         throw new Error(j.error ? `${j.error}${j.detail ? ` — ${j.detail}` : ""}` : `Sign-in failed (server error ${r.status}). ${text.slice(0, 200)}`);
       }
       const next = params.get("next");
       router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
       router.refresh();
     } catch (e) {
-      console.error("[login] error", e);
       setErr((e as Error).message);
       setBusy(false);
     }
