@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Download, Info, Table2, BarChart2, SearchX } from "lucide-react";
 import EChart from "@/components/charts/EChart";
 import { accentFor, useChartTheme } from "./theme";
 import { downloadText, toCSV } from "@/lib/fmt";
+
+/** May this user download tables as CSV? Viewer accounts may not (set by the DataProvider). */
+export const CanExportCtx = createContext(true);
 
 /* ---------------- Card ---------------- */
 export function Card({
@@ -13,6 +16,7 @@ export function Card({
   title?: React.ReactNode; sub?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode; className?: string;
   pad?: boolean; csv?: () => Record<string, unknown>[]; csvName?: string; id?: string;
 }) {
+  if (!useContext(CanExportCtx)) csv = undefined;
   return (
     <section id={id} className={`card fade-up ${className}`}>
       {(title || actions || csv) && (

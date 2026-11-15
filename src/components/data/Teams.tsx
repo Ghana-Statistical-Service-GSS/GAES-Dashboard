@@ -116,7 +116,7 @@ export default function TeamCards({ detailed = false, filterable = false }: { de
 }
 
 function TeamModal({ team, members, completed, attempted, onClose }: { team: TeamRow; members: Member[]; completed: number; attempted: number; onClose: () => void }) {
-  const { activeFilterCount } = useData();
+  const { activeFilterCount, session } = useData();
   const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -211,7 +211,7 @@ function TeamModal({ team, members, completed, attempted, onClose }: { team: Tea
             {activeFilterCount > 0 && <> Counts follow the filters currently applied.</>}
           </p>
           <div className="flex gap-2">
-            <button className="btn btn-ghost btn-sm" onClick={csv}><Download size={14} /> CSV</button>
+            {session.role !== "viewer" && <button className="btn btn-ghost btn-sm" onClick={csv}><Download size={14} /> CSV</button>}
             <button className="btn btn-primary btn-sm" onClick={onClose}>Close</button>
           </div>
         </footer>

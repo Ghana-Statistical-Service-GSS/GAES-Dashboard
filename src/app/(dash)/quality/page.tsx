@@ -164,7 +164,7 @@ function Quality() {
   return (
     <div className="space-y-6">
       <PageHeader title="Data quality" sub={`${data.checks.length} automated checks run on every interview at each refresh: identification, duplicates, completeness, timing, arithmetic, logical consistency, outliers, GPS, mode and process. Each completed interview gets a 0–100 quality score.`}
-        right={<button className="btn btn-ghost" onClick={() => {
+        right={data.viewer.role !== "viewer" && <button className="btn btn-ghost" onClick={() => {
           const rowsCsv = m.flags.map((f: Flag) => ({ interview: f.key, check: f.check, name: data.checks.find((c) => c.id === f.check)?.name, severity: f.sev, category: f.cat, message: f.msg, interviewer: f.interviewer, team: f.team, region: f.region }));
           import("@/lib/fmt").then(({ toCSV, downloadText }) => downloadText("gaes-quality-flags.csv", toCSV(rowsCsv)));
         }}>Download all flags (CSV)</button>} />

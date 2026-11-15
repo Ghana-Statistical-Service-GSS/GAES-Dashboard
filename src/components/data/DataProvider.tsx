@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 export const AUTO_RELOAD_MS = 5 * 60_000;
 import type { Session } from "@/lib/session";
+import { CanExportCtx } from "@/components/ui/kit";
 import type { Dataset, Rec } from "@/lib/data/types";
 
 export interface Filters {
@@ -148,7 +149,7 @@ export function DataProvider({ session, children }: { session: Session; children
 
   return (
     <DataCtx.Provider value={{ session, data, error, loading, refreshing, refresh, filters, setFilters, rows, activeFilterCount, selected, setSelected, answersId, setAnswersId }}>
-      {children}
+      <CanExportCtx.Provider value={session.role !== "viewer"}>{children}</CanExportCtx.Provider>
     </DataCtx.Provider>
   );
 }

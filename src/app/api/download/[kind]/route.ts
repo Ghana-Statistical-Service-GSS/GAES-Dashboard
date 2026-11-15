@@ -14,8 +14,6 @@ export const maxDuration = 60;
 
 /** Respondent / officer identifiers (spec §3.13): admins only */
 const PII_ADMIN = ["m0q00a", "m0q00b", "m0q00d", "id02", "m0q10b", "id11c", "m1q01", "m0q09b"];
-/** Establishment name & address: hidden from viewers */
-const PII_VIEWER = ["id01b", "id06", "id07", "id09", "m0q12b", "m0q13b", "m0q14b", "m0q15", "id13__Latitude", "id13__Longitude", "m0q08__Latitude", "m0q08__Longitude"];
 /** Helper / placeholder / supervisor-process fields dropped from the analysis file */
 const DROP = /^(ownership_total|m3err1|m3err2|gpsAccuracy|id13__Accuracy|id13__Altitude|id13__Timestamp|m[1-6]qend|m7q0[12]|m4t2|m4t8|m4q01y|sssys_irnd|has__errors|interview__status)$/;
 
@@ -29,6 +27,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ kind: string }
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const { kind } = await ctx.params;
+  // viewers can look at the dashboard but cannot take data files away
+  if (s.role === "viewer") return NextResponse.json({ error: "Downloads are not available for viewer accounts" }, { status: 403 });
   const stamp = new Date().toISOString().slice(0, 10);
   try {
     if (kind === "raw") {
@@ -72,7 +72,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ kind: string }
       const raw = await loadRawExport();
       const byId = new Map(raw.main.map((r) => [r.interview__id, r]));
       const all = [...data.records, ...(data.excludedRecords ?? [])];
-      const dropPII = new Set([...(s.role === "admin" ? [] : PII_ADMIN), ...(s.role === "viewer" ? PII_VIEWER : [])]);
+      const dropPII = new Set(s.role === "admin" ? [] : PII_ADMIN);
       const rawCols = (raw.columns.length ? raw.columns : Object.keys(raw.main[0] ?? {})).filter((k) => k !== "interview__key" && k !== "interview__id" && k !== "qversion" && !DROP.test(k) && !dropPII.has(k));
       const rows = all.map((r) => {
         const src = byId.get(r.id) ?? {};

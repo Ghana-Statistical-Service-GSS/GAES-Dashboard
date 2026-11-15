@@ -60,8 +60,8 @@ export default function DownloadsPage() {
   const regionSum = Object.values(byRegion).reduce((a, b) => a + (Number(b) || 0), 0);
   const sectionSum = Object.values(bySection).reduce((a, b) => a + (Number(b) || 0), 0);
 
-  const downloads = [
-    { href: "/api/download/clean", icon: <FileSpreadsheet size={20} />, title: "Cleaned interview data (CSV)", desc: `One row per interview: all questionnaire answers plus derived variables (disposition, quality score, operating expenses, size class…). ${admin ? "Includes respondent identifiers (admin)." : viewer ? "Names, addresses and phone numbers removed." : "Respondent phone numbers and names removed."}` },
+  const downloads = viewer ? [] : [
+    { href: "/api/download/clean", icon: <FileSpreadsheet size={20} />, title: "Cleaned interview data (CSV)", desc: `One row per interview: all questionnaire answers plus derived variables (disposition, quality score, operating expenses, size class…). ${admin ? "Includes respondent identifiers (admin)." : "Respondent phone numbers and names removed."}` },
     { href: "/api/download/flags", icon: <FileWarning size={20} />, title: "Quality flags (CSV)", desc: "One row per flag — the daily error report for supervisors, with check, severity and message." },
     { href: "/api/download/interviewers", icon: <Users2 size={20} />, title: "Interviewer summary (CSV)", desc: "Assignments, attempts, completes, timing, quality index and alerts per interviewer." },
     { href: "/api/download/dictionary", icon: <BookText size={20} />, title: "Data dictionary (CSV)", desc: "Every variable in the cleaned file with its question text or derivation." },
@@ -103,6 +103,7 @@ export default function DownloadsPage() {
 
       <div>
         <h2 className="section-title mb-3 flex items-center gap-2"><CloudDownload size={18} /> Downloads</h2>
+        {viewer && <div className="notice">Data files (cleaned data, quality flags, interviewer summary and data dictionary) can be downloaded by supervisor and administrator accounts only.</div>}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {downloads.map((d) => (
             <a key={d.href} href={d.href} className="card group flex gap-4 p-5 transition hover:-translate-y-0.5 hover:border-[var(--gss-line)] hover:shadow-lg">
