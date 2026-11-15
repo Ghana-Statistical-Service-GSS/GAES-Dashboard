@@ -8,3 +8,7 @@
   # Their values are ordinary words that appear all over the code, so Netlify's secrets scan would fail the build.
   # Passwords and the AUTH/CRON secrets are still scanned.
   SECRETS_SCAN_OMIT_KEYS = "SUSO_URL,SUSO_WORKSPACE,SUSO_QUESTIONNAIRE_VARIABLE,ADMIN_USERNAME"
+
+# Runs the Next.js app on Netlify (server pages and API routes). Without it only static files are published and every page is 404.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
