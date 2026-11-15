@@ -43,24 +43,26 @@ export async function getDataset(opts: { force?: boolean } = {}): Promise<Datase
     steps[name] = Date.now() - t;
     t = Date.now();
   };
-  const jobs = await resolveJobs();
-  mark("findExports");
+  // the store reads do not depend on Survey Solutions: run all three at once
+  const [jobs, up, storedMaybe] = await Promise.all([
+    resolveJobs(),
+    readJson<UploadedTargets>("targets"),
+    opts.force ? Promise.resolve(null) : readJson<{ key: string; data: Dataset }>("dataset-cache").catch(() => null),
+  ]);
+  mark("findExportsAndReadStore");
   // keep data fresh automatically: request a new export when the latest one is stale (non-blocking)
   try {
     after(() => maybeAutoExport(jobs).catch(() => undefined));
   } catch {
     maybeAutoExport(jobs).catch(() => undefined); // outside a request scope
   }
-  const up = await readJson<UploadedTargets>("targets");
-  mark("readTargets");
   const key = `${ENGINE_VERSION}|${jobs.key}|${up?.updatedAt ?? ""}`;
   if (cache && cache.key === key) {
     cache.at = Date.now();
     return cache.data;
   }
   if (!opts.force) {
-    const stored = await readJson<{ key: string; data: Dataset }>("dataset-cache").catch(() => null);
-    mark("readSavedDataset");
+    const stored = storedMaybe;
     if (stored && stored.key === key && stored.data?.records) {
       cache = { key, data: stored.data, at: Date.now() };
       return stored.data;
@@ -77,8 +79,13 @@ export async function getDataset(opts: { force?: boolean } = {}): Promise<Datase
   const data = processExport(raw, up, supervisorNames);
   mark("process");
   cache = { key, data, at: Date.now() };
-  await writeJson("dataset-cache", { key, data }).catch((e) => console.error("[dataset-cache] write failed", e));
-  mark("saveDataset");
+  // save for other server instances after the response has gone out: visitors never wait for the store
+  const save = () => writeJson("dataset-cache", { key, data }).catch((e) => console.error("[dataset-cache] write failed", e));
+  try {
+    after(save);
+  } catch {
+    void save(); // outside a request scope
+  }
   return data;
 }
 
