@@ -33,10 +33,8 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 const STORE_TIMEOUT_MS = 8000;
-/** After a read fails in every mode, skip the store for a while instead of making each request wait again. */
-let blobDownUntil = 0;
-/** Which Netlify Blobs read mode works on this deployment (decided on first use, per server instance). */
-let blobMode: "strong" | "eventual" | null = null;
+/** Keys known to exist in Netlify Blobs (per server instance). */
+const knownKeys = new Set<string>();
 
 export async function readJson<T>(name: string): Promise<T | null> {
   const kind = storageKind();
@@ -44,27 +42,22 @@ export async function readJson<T>(name: string): Promise<T | null> {
   try {
     if (kind === "netlify-blobs") {
       const { getStore } = await import("@netlify/blobs");
+      const key = `${name}.json`;
+      // Reading a key that does not exist never returns on this platform (it hangs until the function
+      // is stopped), so look the key up in the store's listing first. Listing is fast and reliable.
+      if (!knownKeys.has(key)) {
+        const { blobs } = await withTimeout(getStore({ name: "gaes-dashboard" }).list(), 5000, "Netlify Blobs list");
+        for (const b of blobs) knownKeys.add(b.key);
+        if (!knownKeys.has(key)) return null;
+      }
       const get = (mode: "strong" | "eventual", ms: number) =>
-        withTimeout(getStore({ name: "gaes-dashboard", consistency: mode }).get(`${name}.json`, { type: "json" }), ms, `Netlify Blobs ${mode} read ${name}`) as Promise<T | null>;
-      if (Date.now() < blobDownUntil) return null;
+        withTimeout(getStore({ name: "gaes-dashboard", consistency: mode }).get(key, { type: "json" }), ms, `Netlify Blobs ${mode} read ${name}`) as Promise<T | null>;
       let v: T | null;
       try {
-        if (blobMode === "eventual") v = await get("eventual", 4000);
-        else {
-          try {
-            // "strong" always returns the latest write, but stalls on some sites; fall back to the edge-cached read
-            v = await get("strong", blobMode === "strong" ? 4000 : 2500);
-            blobMode = "strong";
-          } catch (e) {
-            console.warn(`[store] strong read of ${name} failed (${(e as Error).message}); trying eventual consistency`);
-            v = await get("eventual", 3000);
-            blobMode = "eventual";
-          }
-        }
+        v = await get("strong", 5000); // always the latest write
       } catch (e) {
-        blobMode = null;
-        blobDownUntil = Date.now() + 60_000;
-        throw e;
+        console.warn(`[store] strong read of ${name} failed (${(e as Error).message}); trying the edge-cached copy`);
+        v = await get("eventual", 5000);
       }
       if (Date.now() - t0 > 2000) console.warn(`[store] read ${name} took ${Date.now() - t0} ms`);
       return v ?? null;
@@ -89,6 +82,7 @@ export async function writeJson(name: string, value: unknown): Promise<void> {
   if (kind === "netlify-blobs") {
     const { getStore } = await import("@netlify/blobs");
     await withTimeout(getStore({ name: "gaes-dashboard" }).set(`${name}.json`, body), STORE_TIMEOUT_MS, `Netlify Blobs write ${name}`);
+    knownKeys.add(`${name}.json`);
     return;
   }
   if (kind === "vercel-blob") {
@@ -106,7 +100,7 @@ export async function writeJson(name: string, value: unknown): Promise<void> {
 /** Admin diagnostics: how the store answers right now (timings and errors only, no content). */
 export async function storeDiagnostics(): Promise<Record<string, unknown>> {
   const kind = storageKind();
-  const out: Record<string, unknown> = { kind, blobMode, skippingStoreForMs: Math.max(0, blobDownUntil - Date.now()) };
+  const out: Record<string, unknown> = { kind, knownKeys: [...knownKeys] };
   if (kind !== "netlify-blobs") return out;
   const { getStore } = await import("@netlify/blobs");
   const probe = async (label: string, f: () => Promise<unknown>) => {
@@ -122,7 +116,7 @@ export async function storeDiagnostics(): Promise<Record<string, unknown>> {
     ...(["strong", "eventual"] as const).flatMap((mode) => ["users", "targets", "dataset-cache"].map((n) =>
       probe(`${mode} read ${n}`, () => getStore({ name: "gaes-dashboard", consistency: mode }).get(`${n}.json`, { type: "text" })))),
     probe("list keys", async () => (await getStore({ name: "gaes-dashboard" }).list()).blobs.map((b) => b.key).join(",") || null),
-    probe("write probe", async () => { await getStore({ name: "gaes-dashboard" }).set("probe.json", JSON.stringify({ at: new Date().toISOString() })); return "ok"; }),
+    probe("remove old probe key", async () => { await getStore({ name: "gaes-dashboard" }).delete("probe.json"); return "ok"; }),
   ]);
   return out;
 }
